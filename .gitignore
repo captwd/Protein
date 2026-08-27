@@ -1,0 +1,21 @@
+# Python 字节码缓存
+__pycache__/
+*.pyc
+
+# 训练缓存 / 中间产物（可再生成，不入库）
+esm2_cache/
+test_sets/
+pprot/
+hardset_logs/
+*.pt
+*.pkl
+
+# 本地数据（不随仓库重分发）
+pdbs/
+npz/
+*.fasta
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
