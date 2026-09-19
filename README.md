@@ -7,8 +7,8 @@ the potential.
 
 This repository accompanies the paper
 
-> *"Injecting Physical Priors into Protein Distance Prediction: Controlled Evidence from
-> PDB-Derived Statistical Potentials"* (submitted, *Journal of Chemical Information and Modeling*).
+> *"Disentangling Architectural and Content Effects of Statistical Potentials in Protein
+> Distance Prediction"* (under review).
 
 Everything needed to reproduce the reported experiments, analyses, and figures is shipped here:
 the training code, the PMF build pipeline, the exact data splits, and the per-run / per-target
@@ -38,12 +38,17 @@ All per-run / per-target result ledgers that back the paper's numbers live in `r
 | `results/cka_per_protein.csv` | Per-protein linear CKA values (n=32 CASP14 proteins) — raw data behind the representational analysis figure. |
 | `results/cka_results.csv` | Aggregated CKA statistics (pairwise + PMF-alignment + paired t-tests). |
 | `results/master_table.csv` | Consolidated mean±std P@L/5 across all conditions / test sets. |
+| `results/pmf_source_chains.csv` | Chain-level list of the 5,119 PMF source structures (PDB id, chain, length, residue-pair count). |
+| `results/homolog_hits.csv` | Per-benchmark homolog hits against the PMF source corpus: best-hit identity/coverage and hit counts at 25/30/50/90/100% identity thresholds. |
+| `results/sens_overlap_35m.txt` | 35M target-level content contrasts after excluding targets with high-identity homologs in the PMF corpus (source of the homolog-overlap sensitivity table). |
+| `results/decomp_paired_stats.txt` | Paired seed-level statistics for the architecture / mechanism / content decomposition steps (500 proteins, 3 seeds). |
 
 ### Scripts and tests
 
 | Path | Description |
 |:--|:--|
 | `scripts/dump_splits.py` | Audit/re-generation script that reconstructs `splits.csv` from a local copy of the trRosetta npz + fasta, replaying `new.py`'s exact split logic (`--npz-dir` / `--fasta`). |
+| `scripts/sens_overlap_35m.py` | Homolog-overlap sensitivity analysis: recomputes the 35M target-level contrasts after excluding targets with high-identity homologs in the PMF corpus. |
 | `tests/test_bin_alignment.py` | Asserts the model bins (`new.py`) and PMF bins (`pmf_bins.py`) are exactly aligned: `BIN_CONFIG`, amino-acid order, 37-bin edges, and `torch.bucketize(..., right=True)` semantics. |
 
 Additional analysis scripts that regenerate the CSV ledgers from raw run logs

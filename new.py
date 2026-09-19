@@ -8,11 +8,11 @@ ESM2 + 物理约束蛋白质距离图预测 — 完整框架
                                                     ↓
                   辅助 head + distogram 局部约束（bond/angle）
 
-物理注入方式（可消融，基座为 PDB 统计势 PMF）:
+物理注入方式:
   - 先验基座:  PairPotential 冻结 pmf.npz（E_pmf）+ 可学习残差 ΔE，E = scale·E_pmf + ΔE
   - Loss 级:    L_phys（冻结 PMF 能量约束）+ L_stat（可学习）+ L_clash + 几何约束
   - 特征级:     feature-gate 门控融合 ESM2 ∥ 物理势能
-  - 注意力级:   axial attention + (-E) bias（低能有利 → 高注意力）
+  - 注意力级:   axial attention + (-E) bias
 
 Usage:
   # 基线（4层三角块，无物理注入）
@@ -444,7 +444,7 @@ class PairPotential(nn.Module):
         return F.softplus(self.log_scale) * self.delta
 
     def static_bias(self, aa_idx):
-        """静态 aa 对 bias: -min_{bin<far} E[b, aa, aa]（最有利接触亲和力）。
+        """静态 aa 对 bias: -min_{bin<far} E[b, aa, aa]。
         不依赖预测距离 → 无软查表稀释，信号最强。
         返回 (B, L, L)：亲和力强的 aa 对 → 大正 bias → 高注意力。"""
         pot = self.pot()
@@ -550,8 +550,7 @@ class AxialSelfAttention(nn.Module):
         return self.bias_scale * b
 
     def _pass_mask(self, bias_norm, key_mask, B, L):
-        """构造 (B*L, 1, L, L) 加法注意力掩码（bias 全矩阵 + key padding）。
-        bias 对同一 batch 的所有行/列序列共享同一 (L,L) 矩阵，故先按 (B,L,L) 组合再广播。"""
+        """构造 (B*L, 1, L, L) 加法注意力掩码（bias 全矩阵 + key padding）。"""
         if bias_norm is None and key_mask is None:
             return None
         dev = bias_norm.device if bias_norm is not None else key_mask.device
@@ -565,7 +564,6 @@ class AxialSelfAttention(nn.Module):
         x: (B, L, L, dim)
         bias: (B, L, L) or None（物理势能，低能 → 高注意力）
         mask_1d: (B, L) or None
-        使用 FlashAttention（F.scaled_dot_product_attention），避免物化 (B*L, H, L, L) 注意力矩阵。
         """
         B, H, W, D = x.shape
         assert H == W
@@ -763,10 +761,10 @@ class ProteinPredictor(nn.Module):
         # ---- Axial Attention (可选 bias) ----
         if self.use_attn_bias or self.use_attn_no_bias:
             if self.use_attn_no_bias:
-                # 关键对照：只有注意力、无物理 bias（隔离架构与物理的贡献）
+                # 关键对照：只有注意力、无物理 bias
                 z = self.axial(z, bias=None, mask_1d=mask_1d)
             elif self.use_static_bias:
-                # 方案 B: 静态 aa 对亲和力 bias（不依赖预测距离，信号最强）
+                # 方案 B: 静态 aa 对亲和力 bias
                 z = self.axial(z, bias=self.pair_pot.static_bias(aa_idx), mask_1d=mask_1d)
             else:
                 z = self.axial(z, bias=-pair_energy, mask_1d=mask_1d)  # 软查表（原方案）
@@ -848,7 +846,7 @@ class PhysicsLoss(nn.Module):
         """
         B, L = true_dist.shape[:2]
         device = bin_logits.device
-        bin_logits = bin_logits.float()   # 损失在 fp32 计算，避免 autocast fp16 精度问题
+        bin_logits = bin_logits.float()  
         loss_dict = {}
 
         if mask_1d is None:
@@ -869,7 +867,6 @@ class PhysicsLoss(nn.Module):
         valid_clash = clash_mask.sum() + 1e-6
 
         # ---- L_dist: 距离分桶交叉熵 ----
-        # 注意: Rosettosa `dist` 字段 0.0 是 far 哨兵（≥20Å）→ FAR_BIN，否则会误判为接触
         true_bin = true_dist_to_bin_idx(true_dist, self.bin_edges.to(device))
         loss_dist = self.ce(bin_logits, true_bin)
         loss_dict["L_dist"] = (loss_dist * dist_mask).sum() / valid_dist * self.lambda_dist
@@ -888,7 +885,7 @@ class PhysicsLoss(nn.Module):
             if hasattr(self.pair_pot, "delta") and any(p.requires_grad for p in self.pair_pot.parameters()):
                 loss_dict["L_pot_reg"] = 1e-4 * self.pair_pot.delta.pow(2).mean()
 
-        # ---- L_phys: 冻结 PDB-PMF 能量约束（预测分布不应对应物理高能态）----
+        # ---- L_phys: 冻结 PDB-PMF 能量约束 ----
         if self.use_phys and self.pair_pot is not None and aa_idx is not None:
             pred_prob = F.softmax(bin_logits, dim=1)               # (B,N_BINS,L,L)
             e_pmf = self.pair_pot.e_pmf                            # (N_BINS,20,20) 冻结，无梯度
@@ -902,14 +899,14 @@ class PhysicsLoss(nn.Module):
             phys_mask = mask_2d * (sep >= 6).float()
             loss_dict["L_phys"] = (phys_viol * phys_mask).sum() / (phys_mask.sum() + 1e-6) * self.lambda_phys
 
-        # ---- L_clash: 位阻（概率版本）----
+        # ---- L_clash: 位阻 ----
         if self.lambda_clash > 0:
             pred_prob = F.softmax(bin_logits, dim=1)
             clash_bins = (self.bin_centers < 3.5).float().view(1, -1, 1, 1).to(device)
             p_clash = (pred_prob * clash_bins).sum(dim=1)
             loss_dict["L_clash"] = (p_clash * clash_mask).sum() / valid_clash * self.lambda_clash
 
-        # ---- L_tri: 三角不等式损失（采样版本）----
+        # ---- L_tri: 三角不等式损失 ----
         if self.lambda_tri > 0:
             pred_dist = logits_to_pred_dist(bin_logits)
             
@@ -967,7 +964,7 @@ class PhysicsLoss(nn.Module):
                 loss_angle_aux = (angle_pred - angle_labels).pow(2).mean()
             loss_dict["L_angle_aux"] = loss_angle_aux * self.lambda_angle_aux
 
-        # ---- L_bond_dist: distogram相邻残基距离约束（CE版本）----
+        # ---- L_bond_dist: distogram相邻残基距离约束 ----
         if self.lambda_bond_dist > 0 and bond_labels is not None:
             idx = torch.arange(L - 1, device=device)
             bond_logits = bin_logits[:, :, idx, idx + 1]
@@ -1019,7 +1016,7 @@ def load_pdnet_list(lst_name):
 
 
 def load_dist(pdb_id, dtype):
-    # 统一使用 Cβ 距离图（trRosetta 约定；Gly 以 Cα 兜底）
+    # 统一使用 Cβ 距离图
     path = os.path.join(DATA_DIR, dtype, "distance", f"{pdb_id}-cb.npy")
     if not os.path.exists(path):
         return None
@@ -1141,14 +1138,10 @@ class ContactDataset(Dataset):
 
 class TRRosettaDataset(ContactDataset):
     """
-    trRosetta 训练集（Cβ 37-bin 距离，far 哨兵）。样本结构同 ContactDataset，
-    复用其 __getitem__（crop）与模块级 collate。
-
+    trRosetta 训练集（Cβ 37-bin 距离，far 哨兵）
     每个 npz:
       dist    (L,L) Cβ-Cβ 距离，0-20Å 为真实值，≥20Å 全编码成 0.0（far 哨兵）
       mask1d  (L,)  有效残基 mask
-    序列来自 15051.fasta；只保留 mask1d=True 的有效残基子序列。
-    训练时 dist==0 由 true_dist_to_bin_idx 映射到 FAR_BIN（见 PhysicsLoss）。
     """
     def __init__(self, ids, npz_dir, fasta_seq, crop=256, max_L=1024):
         self.samples = []
@@ -1192,8 +1185,7 @@ class TRRosettaDataset(ContactDataset):
 
 
 class TestNPZDataset(ContactDataset):
-    """外部测试集（统一 npz: seq + dist(Cβ截断,0=far哨兵) + mask1d）。
-    复用 ContactDataset.__getitem__ 与模块级 collate，供 --eval-external-test 评估。"""
+    """外部测试集（统一 npz: seq + dist(Cβ截断,0=far哨兵) + mask1d）"""
     def __init__(self, ids, npz_dir, crop=None, max_L=1024):
         self.samples = []
         for pid in tqdm(ids, desc="Test"):
@@ -1407,7 +1399,7 @@ class Trainer:
                     bin_logits, _, _, _ = self.model(emb, aa_idx, mask_1d=mask_1d)
             pred_dist = logits_to_pred_dist(bin_logits)
 
-            # ---- ① 接触精度 P@L/k（用预测距离排序，非二值化） ----
+            # ---- ① 接触精度 P@L/k  ----
             pred_score = pred_dist.float().cpu().numpy()      # 值越小 = 接触置信度越高
             true_contact = ((td > 0) & (td < 8.0)).float().cpu().numpy()  # 0 是 far 哨兵，排除
 
@@ -1417,7 +1409,7 @@ class Trainer:
                 for k, v in m.items():
                     metrics.setdefault(k, []).append(v)
 
-            # ---- ② MAE（排除对角线 + padding + far 哨兵 0；远距离只报分类准确率）----
+            # ---- ② MAE ----
             pred_bin = bin_logits.argmax(dim=1)                # (B, L, L) 预测 bin
             for i, L_i in enumerate(batch["lens"]):
                 sep = (torch.arange(L_i, device=DEVICE)[:, None] -
@@ -1435,11 +1427,11 @@ class Trainer:
                 metrics.setdefault("MAE_all_valid", []).append(safe_mean(diff, valid).item())
                 metrics.setdefault("MAE_contact_range", []).append(safe_mean(diff, valid & (td_i < 8.0)).item())
                 metrics.setdefault("MAE_mid", []).append(safe_mean(diff, valid & (td_i >= 8.0)).item())
-                # far 哨兵格子: 模型是否判成 far（argmax == FAR_BIN）→ 分类准确率
+
                 far_hit = (pred_bin[i, :L_i, :L_i] == FAR_BIN) & far_cells
                 metrics.setdefault("far_acc", []).append((far_hit.sum() / far_cells.sum().clamp(min=1)).item())
 
-            # ---- ③ 局部几何误差（直接从 pred_dist 计算，无 MDS）----
+            # ---- ③ 局部几何误差 ----
             for i, L_i in enumerate(batch["lens"]):
                 if L_i > self.max_eval_len:
                     continue
@@ -1492,7 +1484,7 @@ class Trainer:
                 p_clash_mean = (p_clash_i * mask).sum() / mask.sum().clamp(min=1)
                 metrics.setdefault("p_clash_mean", []).append(p_clash_mean.item())
 
-            # ---- ⑤ 三角不等式违例率（采样版本，sep>=6） ----
+            # ---- ⑤ 三角不等式违例率 ----
             for i, L_i in enumerate(batch["lens"]):
                 d = pred_dist[i, :L_i, :L_i]
                 

@@ -1,0 +1,6 @@
+分解路径配对统计 (500 proteins, 3 seeds, held-out P@L/5)
+来源: paired_seed_scores.csv (500_baseline / attnobias / 500_perturb / 500_phys)
+
+arch = axial_zero_bias - baseline: diffs=[np.float64(0.0068), np.float64(0.0068), np.float64(0.0151)] mean=+0.96pp CI=[+0.68,+1.51] t=3.46 p=0.074
+mech = shuffled - axial_zero_bias: diffs=[np.float64(0.0141), np.float64(-0.0049), np.float64(-0.0028)] mean=+0.21pp CI=[-0.49,+1.41] t=0.35 p=0.757
+content = real - shuffled (soft lookup): diffs=[np.float64(0.0102), np.float64(0.002), np.float64(0.0058)] mean=+0.60pp CI=[+0.20,+1.02] t=2.53 p=0.127
