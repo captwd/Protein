@@ -1,0 +1,31 @@
+下游折叠评价汇总 (CASP14, 500-protein checkpoints, 3 seeds)
+管线: distogram -> 图补全 -> 加权 SMACOF -> LBFGS -> Kabsch 配准
+
+== TM-score ==
+  baseline   s0=   0.117  s1=   0.114  s2=   0.117   mean=0.116
+  axial      s0=   0.117  s1=   0.112  s2=   0.118   mean=0.115
+  shuffled   s0=   0.111  s1=   0.114  s2=   0.115   mean=0.113
+  real       s0=   0.116  s1=   0.114  s2=   0.114   mean=0.115
+
+== RMSD (A) ==
+  baseline   s0=  17.178  s1=  17.078  s2=  17.074   mean=17.110
+  axial      s0=  16.980  s1=  17.159  s2=  16.957   mean=17.032
+  shuffled   s0=  17.094  s1=  17.132  s2=  17.142   mean=17.123
+  real       s0=  17.080  s1=  17.091  s2=  17.280   mean=17.150
+
+== lDDT ==
+  baseline   s0=   0.475  s1=   0.453  s2=   0.474   mean=0.467
+  axial      s0=   0.474  s1=   0.454  s2=   0.471   mean=0.467
+  shuffled   s0=   0.481  s1=   0.480  s2=   0.481   mean=0.481
+  real       s0=   0.473  s1=   0.453  s2=   0.464   mean=0.463
+
+== 配对差 (structure level) ==
+  tm    arch (axial-baseline)        per-seed=['+0.0004', '-0.0021', '+0.0008'] mean=-0.0003
+  tm    mech (shuffled-axial)        per-seed=['-0.0056', '+0.0019', '-0.0026'] mean=-0.0021
+  tm    content (real-shuffled)      per-seed=['+0.0050', '+0.0002', '-0.0013'] mean=+0.0013
+  lddt  arch (axial-baseline)        per-seed=['-0.0009', '+0.0010', '-0.0027'] mean=-0.0009
+  lddt  mech (shuffled-axial)        per-seed=['+0.0069', '+0.0259', '+0.0103'] mean=+0.0143
+  lddt  content (real-shuffled)      per-seed=['-0.0080', '-0.0271', '-0.0171'] mean=-0.0174
+
+  content effect on tm: t=0.67 p=0.570
+  content effect on lddt: t=-3.16 p=0.087

@@ -42,12 +42,16 @@ All per-run / per-target result ledgers that back the paper's numbers live in `r
 | `results/homolog_hits.csv` | Per-benchmark homolog hits against the PMF source corpus: best-hit identity/coverage and hit counts at 25/30/50/90/100% identity thresholds. |
 | `results/sens_overlap_35m.txt` | 35M target-level content contrasts after excluding targets with high-identity homologs in the PMF corpus (source of the homolog-overlap sensitivity table). |
 | `results/decomp_paired_stats.txt` | Paired seed-level statistics for the architecture / mechanism / content decomposition steps (500 proteins, 3 seeds). |
+| `results/folding_eval.csv` | Per-target downstream folding scores (TM-score/RMSD/lDDT) for 650M reconstructions, 22 CASP14 targets x 4 conditions x 3 seeds. |
+| `results/folding_eval_35m.csv` | Same, for the ESM2-35M models (the backbone whose out-of-distribution content effect was significant). |
+| `results/folding_summary.txt` | Condition-level aggregation of both folding matrices. |
 
 ### Scripts and tests
 
 | Path | Description |
 |:--|:--|
 | `scripts/dump_splits.py` | Audit/re-generation script that reconstructs `splits.csv` from a local copy of the trRosetta npz + fasta, replaying `new.py`'s exact split logic (`--npz-dir` / `--fasta`). |
+| `scripts/folding_eval.py` | Downstream folding: distogram to 3D reconstruction (graph-completed weighted MDS + L-BFGS) and TM/RMSD/lDDT scoring (`--backbone 650M|35M`). |
 | `scripts/sens_overlap_35m.py` | Homolog-overlap sensitivity analysis: recomputes the 35M target-level contrasts after excluding targets with high-identity homologs in the PMF corpus. |
 | `tests/test_bin_alignment.py` | Asserts the model bins (`new.py`) and PMF bins (`pmf_bins.py`) are exactly aligned: `BIN_CONFIG`, amino-acid order, 37-bin edges, and `torch.bucketize(..., right=True)` semantics. |
 
